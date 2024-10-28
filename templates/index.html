@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Video Downloader and Transcriber</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        #transcription {
+            white-space: pre-wrap;
+            height: 600px;
+            overflow-y: auto;
+        }
+        .form-group {
+            margin-bottom: 10px;
+        }
+        .form-group label {
+            display: block;
+        }
+        .input-group {
+            display: flex;
+            align-items: center;
+        }
+        .input-group input, .input-group button {
+          margin-left: 5px;
+        }
+        .input-group .btn {
+          margin-left: 10px;
+        }
+        .form-control {
+            width: 100%;
+            max-width: 450px;
+        }
+        .input-group .form-control {
+            flex: 1;
+        }
+        #segment_duration_container {
+            margin-top: 10px; /* Add some spacing */
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>YouTube Video Downloader and Transcriber</h1>
+        <form method="POST" action="/" class="input-group">
+            <div class="form-group">
+                <label for="url">YouTube URL:</label>
+                <input type="url" class="form-control" id="url" name="url" required placeholder="https://www.youtube.com/watch?v=...">
+            </div>
+            <div class="input-group">
+              <button type="submit" class="btn btn-primary">Process</button>
+            </div>
+        </form>
+
+        <div class="row mt-5" id="processing_section" style="display:none;">
+          <div class="col">
+            <div id="video-container" style="display:none;">
+                <h2>Video:</h2>
+                <video width="640" height="360" controls id="videoPlayer">
+                    <source src="" type="video/mp4">
+                </video>
+            </div>
+          </div>
+          <div class="col">
+            <div id="transcription-container" style="display:none;">
+              <h2>Transcription:</h2>
+              <pre id="transcription"></pre>
+            </div>
+          </div>
+        </div>
+        <div id="segment_duration_container" style="display:none;">
+          <label for="segment_duration">Segment Duration (seconds):</label>
+          <input type="number" id="segment_duration" value="10" min="1">
+        </div>
+
+        {% if video_filename %}
+        <script>
+            $(document).ready(function() {
+                $("#processing_section").show();
+                $("#video-container").show();
+                $("#videoPlayer source").attr("src", "{{ url_for('serve_video', filename=video_filename) }}");
+                $("#videoPlayer")[0].load();
+                $("#segment_duration_container").show();
+
+
+                $("#videoPlayer").on("loadedmetadata", function() { // Use loadedmetadata for more reliability
+                    $("#transcription-container").show();
+                    const segmentDuration = parseInt($("#segment_duration").val(), 10); // Ensure it's a number
+                    let startTime = 0;
+                    let videoDuration = $("#videoPlayer")[0].duration;
+
+                    function transcribeNextSegment() {
+                        $.ajax({
+                            url: '/transcribe_segment',
+                            method: 'POST',
+                            data: {
+                                video_filename: '{{ video_filename }}',
+                                segment_duration: segmentDuration,
+                                start_time: startTime
+                            },
+                            success: function(response) {
+                                if (response.transcription) {
+                                    $("#transcription").append(response.transcription + "\n\n");
+                                }
+                                if (response.error) {
+                                    console.error("Transcription error:", response.error);
+                                    $("#transcription").append(`Error: ${response.error}\n`);
+                                }
+                                startTime = response.next_start_time;
+                                if (startTime < videoDuration) {
+                                    transcribeNextSegment();
+                                }
+                            },
+                            error: function(error) {
+                                console.error("Transcription error:", error);
+                                $("#transcription").append("Error transcribing video. Please try again.\n");
+                            }
+                        });
+                    }
+
+                    transcribeNextSegment();
+                });
+            });
+        </script>
+        {% endif %}
+    </div>
+</body>
+</html>
